@@ -1,0 +1,34 @@
+#!/bin/bash
+# kubectl-delete-all: a plugin to delete all resources inside a namespace
+# Check if a namespace is provided as an argument
+if [ $# -eq 0 ]; then
+  echo "Usage: kubectl delete_all_resources <namespace>"
+  exit 1
+fi
+# Set the namespace variable
+namespace=$1
+# Loop through all the resources in the namespace
+for resource in $(kubectl api-resources --verbs=list --namespaced -o name); do
+  # Get the names of the resources
+  names=$(kubectl get -n $namespace $resource -o jsonpath='{.items[*].metadata.name}')
+  # Loop through each name
+  for name in $names; do
+    # Check if the resource has any finalizers
+    finalizers=$(kubectl get -n $namespace $resource $name -o jsonpath='{.metadata.finalizers}')
+    # If yes, remove them
+    if [ -n "$finalizers" ]; then
+      kubectl patch -n $namespace $resource $name --type=json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
+    fi
+    # Delete the resource
+    kubectl delete -n $namespace $resource $name
+  done
+done
+# Check if the namespace has any finalizers
+finalizers=$(kubectl get namespace $namespace -o jsonpath='{.metadata.finalizers}')
+# If yes, remove them
+if [ -n "$finalizers" ]; then
+  kubectl patch namespace $namespace --type=json -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
+fi
+# Delete the namespace
+kubectl delete namespace $namespace
+echo "All resources and namespace deleted successfully."
